@@ -8,7 +8,7 @@
 // 	protoc        v3.15.6
 // source: cast_channel.proto
 
-package main
+package api
 
 import (
 	reflect "reflect"
