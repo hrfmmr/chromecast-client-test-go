@@ -4,15 +4,14 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net"
 	"time"
 
-	"github.com/buger/jsonparser"
 	"github.com/gogo/protobuf/proto"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
 
 	pb "github.com/hrfmmr/chromecast-client-test-go/protobuf"
@@ -32,6 +31,8 @@ const (
 )
 
 var (
+	json = jsoniter.ConfigCompatibleWithStandardLibrary
+
 	requestID       = RequestID(0)
 	ConnectHeader   = PayloadHeader{Type: "CONNECT"}
 	GetStatusHeader = PayloadHeader{Type: "GET_STATUS"}
@@ -132,13 +133,14 @@ func recvLoop(conn *tls.Conn, recvMsgChan chan<- *pb.CastMessage) {
 
 func recvMsg(recvMsgChan <-chan *pb.CastMessage, resultChanMap map[RequestID]chan *pb.CastMessage) {
 	for msg := range recvMsgChan {
-		reqID, err := jsonparser.GetInt([]byte(*msg.PayloadUtf8), "requestId")
-		if err != nil {
+		reqID := json.Get([]byte(*msg.PayloadUtf8), "requestId")
+		if err := reqID.LastError(); err != nil {
 			log.Printf("👀failed to extract requestId from message:%s", *msg.PayloadUtf8)
 			continue
 		}
-		log.Printf("📦 reqID:%d %s <- %s[%s] response:%s", reqID, *msg.DestinationId, *msg.SourceId, *msg.Namespace, *msg.PayloadUtf8)
-		if ch, ok := resultChanMap[RequestID(reqID)]; ok {
+		id := reqID.ToInt()
+		log.Printf("📦 reqID:%d %s <- %s[%s] response:%s", id, *msg.DestinationId, *msg.SourceId, *msg.Namespace, *msg.PayloadUtf8)
+		if ch, ok := resultChanMap[RequestID(id)]; ok {
 			ch <- msg
 		}
 	}
@@ -231,7 +233,7 @@ func main() {
 	}
 	var receiverStatusResp ReceiverStatusResponse
 	var defaultApp CastApplication
-	if _, _, _, err := jsonparser.Get([]byte(*msg.PayloadUtf8), "status", "applications"); err != nil {
+	if err := json.Get([]byte(*msg.PayloadUtf8), "status", "applications").LastError(); err != nil {
 		log.Println("🚀 app is not launched, trying to launch app")
 		payload := &LaunchRequest{
 			PayloadHeader: LaunchHeader,
